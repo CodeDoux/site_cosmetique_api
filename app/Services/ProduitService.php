@@ -13,7 +13,7 @@ class ProduitService
 
     public function lister(array $filtres = [])
     {
-        $query = Produit::with(['categorie', 'imagePrimaire'])
+        $query = Produit::with(['categorie', 'imagePrimaire','images'])
             ->when(
                 isset($filtres['categorie_id']),
                 fn($q) => $q->where('categorie_id', $filtres['categorie_id'])
@@ -27,8 +27,16 @@ class ProduitService
                 fn($q) => $q->where('nom', 'like', '%' . $filtres['recherche'] . '%')
             )
             ->when(
+                isset($filtres['marque']),
+                fn($q) => $q->where('marque', 'like', '%' . $filtres['marque'] . '%')
+            )
+            ->when(
                 isset($filtres['prix_min']),
                 fn($q) => $q->where('prix', '>=', $filtres['prix_min'])
+            )
+           ->when(
+            !empty($filtres['en_promo']) && $filtres['en_promo'] == 1,
+            fn($q) => $q->whereNotNull('prixPromo')
             )
             ->when(
                 isset($filtres['prix_max']),
@@ -65,6 +73,7 @@ class ProduitService
                 'seuilAlerteStock' => $data['seuilAlerteStock'] ?? 5,
                 'categorie_id'     => $data['categorie_id'],
                 'note'             => $data['note'] ?? null,
+                'marque'           => $data['marque'] ?? null,
                 'statut'           => $data['stock'] > 0 ? 'DISPONIBLE' : 'EN_RUPTURE',
             ]);
 

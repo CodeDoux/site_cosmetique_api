@@ -10,8 +10,17 @@ class Produit extends Model
     use HasFactory;
 
     protected $fillable = [
-        'nom', 'description', 'stock', 'prix', 'prixPromo',
-        'seuilAlerteStock', 'statut', 'categorie_id', 'note',
+        'nom',
+        'description',
+        'stock',
+        'prix',
+        'prixPromo',
+        'seuilAlerteStock',
+        'dateAjout',
+        'statut',
+        'categorie_id',
+        'note',
+        'marque'
     ];
 
     protected $casts = [
@@ -21,14 +30,49 @@ class Produit extends Model
         'prixPromo' => 'decimal:2',
     ];
 
-    public function categorie()      { return $this->belongsTo(Categorie::class, 'categorie_id'); }
-    public function images()         { return $this->hasMany(Image::class, 'produit_id'); }
-    public function imagePrimaire()  { return $this->hasOne(Image::class, 'produit_id')->where('isPrimary', true); }
-    public function avis()           { return $this->hasMany(Avis::class, 'produit_id'); }
-    public function lignesCommande() { return $this->hasMany(LigneCommande::class, 'produit_id'); }
-    public function promotions()     { return $this->hasMany(Promotion::class, 'produit_id'); }
+    // ─── Relations ───────────────────────────────────────────────────────────
 
-    // Prix effectif (promo ou normal)
+    public function categorie()
+    {
+        return $this->belongsTo(Categorie::class, 'categorie_id');
+    }
+
+    public function images()
+    {
+        return $this->hasMany(Image::class, 'produit_id');
+    }
+
+    public function imagePrimaire()
+    {
+        return $this->hasOne(Image::class, 'produit_id')->where('isPrimary', true);
+    }
+
+    public function avis()
+    {
+        return $this->hasMany(Avis::class, 'produit_id');
+    }
+
+    public function lignesCommande()
+    {
+        return $this->hasMany(LigneCommande::class, 'produit_id');
+    }
+
+    public function promotions()
+    {
+        return $this->hasMany(Promotion::class, 'produit_id');
+    }
+
+    // ── Relation ajoutée pour les gammes ──────────────────────────────────────
+    public function gammes()
+    {
+        return $this->belongsToMany(Gamme::class, 'gamme_produits')
+            ->using(GammeProduit::class)
+            ->withPivot(['quantite', 'valeur_unitaire'])
+            ->withTimestamps();
+    }
+
+    // ─── Accesseurs ──────────────────────────────────────────────────────────
+
     public function getPrixEffectifAttribute(): float
     {
         return $this->prixPromo ?? $this->prix;

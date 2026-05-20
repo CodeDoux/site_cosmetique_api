@@ -50,9 +50,9 @@ class AuthController extends Controller
     }
 
     // ─── GET /api/auth/me ─────────────────────────────────────────────────────
-    public function me(Request $request): JsonResponse
+    public function user(Request $request): JsonResponse
     {
-        return response()->json($request->user()->load('adresses'));
+        return response()->json($request->user());
     }
 
     // ─── PUT /api/auth/profile ────────────────────────────────────────────────

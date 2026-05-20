@@ -50,6 +50,7 @@ class PaiementService
                 'modePaiement'   => 'EN_ESPECE',
                 'operateur'      => null,
                 'telephone'      => null,
+                'datePaiement'   => now(),
             ]
         );
 

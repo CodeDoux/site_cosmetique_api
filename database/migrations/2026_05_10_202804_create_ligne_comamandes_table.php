@@ -13,12 +13,14 @@ return new class extends Migration
     {
         Schema::create('ligne_commandes', function (Blueprint $table) {
             $table->id();
-             $table->decimal('prix',10,2);
+            $table->decimal('prix',10,2);
             $table->decimal('quantite',8,2);
             $table->decimal('montantLigne',10,2);
             $table->decimal('reduction',10,2);
-            $table->foreignId('produit_id')->constrained('produits')->onDelete('cascade');
+            $table->foreignId('produit_id')->constrained('produits')->onDelete('set null');
+            $table->foreignId('gamme_id')->nullable()->constrained('gammes')->onDelete('set null');
             $table->foreignId('commande_id')->constrained('commandes')->onDelete('cascade');
+            $table->enum('type', ['PRODUIT', 'GAMME'])->default('PRODUIT')->after('gamme_id');
             $table->timestamps();
         });
     }

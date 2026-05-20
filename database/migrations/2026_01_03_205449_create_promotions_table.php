@@ -22,8 +22,6 @@ return new class extends Migration
             $table->boolean('estActif')->default(true);
             $table->timestamp('dateDebut');
             $table->timestamp('dateFin')->nullable();
-            $table->foreignId('produit_id')->nullable()->constrained('produits')->onDelete('cascade'); // null = applicable à tout
-            //$table->foreignId('categorie_id')->nullable()->constrained('categories')->onDelete('cascade');
             $table->timestamps();
         });
     }

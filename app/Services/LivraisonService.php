@@ -104,7 +104,7 @@ class LivraisonService
 
     public function marquerExpediee(Livraison $livraison, int $livreurId, array $data = []): Livraison
     {
-        $this->verifierAccesLivreur($livraison, $livreurId);
+        //$this->verifierAccesLivreur($livraison, $livreurId);
 
         $livraison->update([
             'dateExpedition' => $data['dateExpedition'] ?? now(),
@@ -128,7 +128,7 @@ class LivraisonService
 
     public function mettreAJourStatut(Livraison $livraison, int $livreurId, array $data): Livraison
     {
-        $this->verifierAccesLivreur($livraison, $livreurId);
+       // $this->verifierAccesLivreur($livraison, $livreurId);
 
         return DB::transaction(function () use ($livraison, $data) {
 

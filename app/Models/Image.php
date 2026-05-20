@@ -12,4 +12,13 @@ class Image extends Model
     protected $casts = ['isPrimary' => 'boolean', 'dateCreation' => 'date'];
 
     public function produit() { return $this->belongsTo(Produit::class, 'produit_id'); }
+
+    protected static function boot()
+{
+    parent::boot();
+
+    static::creating(function ($image) {
+        $image->dateCreation = $image->dateCreation ?? now();
+    });
+}
 }

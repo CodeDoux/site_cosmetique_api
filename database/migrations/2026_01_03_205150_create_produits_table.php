@@ -22,6 +22,7 @@ return new class extends Migration
             $table->timestamp('dateAjout')->useCurrent();
             $table->enum('statut', ['DISPONIBLE', 'EN_RUPTURE'])->default('DISPONIBLE');            
             $table->foreignId('categorie_id')->constrained('categories')->onDelete('cascade');
+            $table->string('marque')->nullable();
             $table->tinyInteger('note');
             $table->timestamps();
         });

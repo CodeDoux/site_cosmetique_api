@@ -17,8 +17,8 @@ class AdminSeeder extends Seeder
         User::create([
             'nomComplet' => 'Admin Cosmetique',
             'email' => 'admin@cosmetique.com',
-            'password' => Hash::make('admin12345'),
-            'tel' => '770000000',
+            'password' => Hash::make('admin123'),
+            'tel' => '781857313',
             'role' => 'ADMIN'
         ]);
     }

@@ -21,6 +21,7 @@ class ProduitRequest extends FormRequest
             'store' => [
                 'nom'              => 'required|string|max:255',
                 'description'      => 'required|string',
+                'marque'           => 'nullable|string',
                 'stock'            => 'required|numeric|min:0',
                 'prix'             => 'required|numeric|min:0',
                 'prixPromo'        => 'nullable|numeric|min:0|lt:prix',
@@ -43,6 +44,7 @@ class ProduitRequest extends FormRequest
                 'categorie_id'     => 'sometimes|exists:categories,id',
                 'note'             => 'nullable|integer|between:1,5',
                 'statut'           => 'sometimes|in:DISPONIBLE,EN_RUPTURE',
+                'marque'           => 'nullable|string',
             ],
 
             default => [],

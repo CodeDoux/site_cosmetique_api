@@ -1,72 +1,148 @@
 <?php
-// ══════════════════════════════════════════════════════════════
-// app/Http/Controllers/Api/PromotionController.php
-// ══════════════════════════════════════════════════════════════
+
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Http\Requests\PromotionRequest;
-use App\Models\Promotion;
 use App\Services\PromotionService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PromotionController extends Controller
 {
     public function __construct(private PromotionService $promotionService) {}
 
-    // ─── GET /api/promotions ──────────────────────────────────────────────────
-    // Admin uniquement
-    public function index(Request $request): JsonResponse
+    // ─── Liste ───────────────────────────────────────────────────────────────
+
+    public function index()
     {
-        abort_if(!$request->user()->isAdmin(), 403);
-        return response()->json($this->promotionService->lister());
+        try {
+            return response()->json($this->promotionService->index());
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 
-    // ─── POST /api/promotions ─────────────────────────────────────────────────
-    // Admin uniquement
-    public function store(PromotionRequest $request): JsonResponse
-    {
-        $promotion = $this->promotionService->store($request->validated());
+    // ─── Créer ───────────────────────────────────────────────────────────────
 
-        return response()->json([
-            'message'   => 'Promotion créée.',
-            'promotion' => $promotion,
-        ], 201);
+    public function store(PromotionRequest $request)
+    {
+        try {
+            $promotion = $this->promotionService->store($request->validated());
+            return response()->json($promotion, 201);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 
-    // ─── PUT /api/promotions/{promotion} ──────────────────────────────────────
-    // Admin uniquement
-    public function update(PromotionRequest $request, Promotion $promotion): JsonResponse
-    {
-        $promotion = $this->promotionService->update($promotion, $request->validated());
+    // ─── Voir ────────────────────────────────────────────────────────────────
 
-        return response()->json([
-            'message'   => 'Promotion mise à jour.',
-            'promotion' => $promotion,
-        ]);
+    public function show($id)
+    {
+        try {
+            return response()->json($this->promotionService->show($id));
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Promotion non trouvée.'], 404);
+        }
     }
 
-    // ─── DELETE /api/promotions/{promotion} ───────────────────────────────────
-    // Admin uniquement
-    public function destroy(Request $request, Promotion $promotion): JsonResponse
+    // ─── Mettre à jour ───────────────────────────────────────────────────────
+
+    public function update(PromotionRequest $request, $id)
     {
-        abort_if(!$request->user()->isAdmin(), 403);
-        $this->promotionService->destroy($promotion);
-        return response()->json(['message' => 'Promotion supprimée.']);
+        try {
+            $promotion = $this->promotionService->update($request->validated(), $id);
+            return response()->json($promotion);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 
-    // ─── POST /api/promotions/valider-code ────────────────────────────────────
-    // Client : vérifier un code promo avant commande
-    public function validerCode(Request $request): JsonResponse
+    // ─── Supprimer ───────────────────────────────────────────────────────────
+
+    public function destroy($id)
+    {
+        try {
+            if (!$this->promotionService->peutEtreSupprimee($id)) {
+                return response()->json([
+                    'message' => 'Impossible de supprimer : cette promotion est liée à des commandes en cours.'
+                ], 409);
+            }
+
+            $this->promotionService->destroy($id);
+            return response()->json(['message' => 'Promotion supprimée.']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ─── Toggle actif ─────────────────────────────────────────────────────────
+
+    public function toggle($id)
+    {
+        try {
+            $promotion = $this->promotionService->toggle($id);
+            return response()->json([
+                'message'   => $promotion->estActif ? 'Promotion activée.' : 'Promotion désactivée.',
+                'promotion' => $promotion,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ─── Promotions actives ───────────────────────────────────────────────────
+
+    public function actives()
+    {
+        try {
+            return response()->json($this->promotionService->getPromotionsActives());
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ─── Calculer prix avec promo ─────────────────────────────────────────────
+
+    public function calculerPrix($produitId)
+    {
+        try {
+            return response()->json(
+                $this->promotionService->calculerPrixAvecPromotion($produitId)
+            );
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ─── Associer un produit ──────────────────────────────────────────────────
+
+    public function associerProduit(Request $request, $id)
     {
         $request->validate([
-            'code'    => 'required|string',
-            'montant' => 'required|numeric|min:0',
+            'produit_id'       => 'required|exists:produits,id',
+            'montant_reduction' => 'nullable|numeric|min:0',
         ]);
 
-        $result = $this->promotionService->validerCode($request->code, $request->montant);
+        try {
+            $association = $this->promotionService->associerProduit(
+                $id,
+                $request->produit_id,
+                $request->montant_reduction
+            );
+            return response()->json(['message' => 'Produit associé.', 'association' => $association]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
 
-        return response()->json($result);
+    // ─── Dissocier un produit ─────────────────────────────────────────────────
+
+    public function dissocierProduit($id, $produitId)
+    {
+        try {
+            $this->promotionService->dissocierProduit($id, $produitId);
+            return response()->json(['message' => 'Produit dissocié.']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 }

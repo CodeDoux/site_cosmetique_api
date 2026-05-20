@@ -2,14 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Carbon;
 
 class Promotion extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'nom',
         'description',
@@ -20,50 +16,43 @@ class Promotion extends Model
         'estActif',
         'dateDebut',
         'dateFin',
-        'produit_id',
     ];
 
     protected $casts = [
+        'estActif'  => 'boolean',
         'dateDebut' => 'datetime',
         'dateFin'   => 'datetime',
-        'estActif'  => 'boolean',
+        'valeur'    => 'decimal:2',
+        'montantMinCommande' => 'decimal:2',
     ];
 
-    // ─── Relations ───────────────────────────────────────────────────────────
-
-    public function produit()
+    // ─── Relation many-to-many avec Produit via promotion_produits ───
+    public function produits()
     {
-        return $this->belongsTo(Produit::class, 'produit_id');
+        return $this->belongsToMany(
+            Produit::class,
+            'promotion_produits', // table pivot
+            'promo_id',           // FK vers promotions
+            'produit_id'          // FK vers produits
+        )
+        ->withPivot('montant_reduction')
+        ->withTimestamps();
     }
 
-    // ─── Méthodes métier ─────────────────────────────────────────────────────
+    // ─── Helpers ───
 
-    /**
-     * Vérifie si la promotion est actuellement valide
-     */
-    public function estValide(): bool
+    public function estEnCours(): bool
     {
-        if (!$this->estActif) return false;
-
-        $now = Carbon::now();
-
-        if ($now->lt($this->dateDebut)) return false;
-
-        if ($this->dateFin && $now->gt($this->dateFin)) return false;
-
-        return true;
+        $now = now();
+        return $this->estActif
+            && $this->dateDebut <= $now
+            && ($this->dateFin === null || $this->dateFin >= $now);
     }
 
-    /**
-     * Calcule la réduction sur un montant donné
-     */
     public function calculerReduction(float $montant): float
     {
-        if ($this->type === 'POURCENTAGE') {
-            return round($montant * $this->valeur / 100, 2);
-        }
-
-        // MONTANT_FIXE : ne pas dépasser le montant total
-        return min($this->valeur, $montant);
+        return $this->type === 'POURCENTAGE'
+            ? $montant * ($this->valeur / 100)
+            : min($this->valeur, $montant);
     }
 }

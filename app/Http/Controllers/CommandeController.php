@@ -7,37 +7,30 @@ use App\Models\Commande;
 use App\Services\CommandeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\PaiementService;
 
 class CommandeController extends Controller
 {
-    public function __construct(private CommandeService $commandeService) {}
+    public function __construct(private CommandeService $commandeService,  private PaiementService $paiementService,) {}
 
     // ─── GET /api/commandes ───────────────────────────────────────────────────
-    // Admin : toutes les commandes | Filtres: statut, client_id
     public function index(Request $request): JsonResponse
     {
         abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur.');
 
-        $commandes = $this->commandeService->lister($request->all());
-
-        return response()->json($commandes);
+        return response()->json($this->commandeService->lister($request->all()));
     }
 
     // ─── GET /api/commandes/mes-commandes ─────────────────────────────────────
-    // Client : ses propres commandes
     public function mesCommandes(Request $request): JsonResponse
     {
-        $commandes = $this->commandeService->mesCommandes($request->user()->id);
-
-        return response()->json($commandes);
+        return response()->json($this->commandeService->mesCommandes($request->user()->id));
     }
 
     // ─── GET /api/commandes/{commande} ────────────────────────────────────────
-    // Admin ou client propriétaire
     public function show(Request $request, Commande $commande): JsonResponse
     {
-        // Un client ne peut voir que ses propres commandes
-        if ($request->user()->isClient() && $commande->client_id !== $request->user()->id) {
+        if ($request->user()?->isClient() && $commande->client_id !== $request->user()->id) {
             abort(403, 'Accès refusé.');
         }
 
@@ -45,24 +38,39 @@ class CommandeController extends Controller
     }
 
     // ─── POST /api/commandes ──────────────────────────────────────────────────
-    // Client uniquement
+    // Accessible sans token (invité) ET avec token (client connecté)
     public function store(CommandeRequest $request): JsonResponse
     {
-        abort_if(!$request->user()->isClient(), 403, 'Seuls les clients peuvent passer une commande.');
+        $user = $request->user(); // null si invité
+
+        // Si connecté, seul un CLIENT peut commander (pas un admin ou livreur)
+        if ($user && !$user->isClient()) {
+            abort(403, 'Seuls les clients peuvent passer une commande.');
+        }
 
         $commande = $this->commandeService->store(
             $request->validated(),
-            $request->user()->id
+            $user?->id  // null si invité → CommandeService crée le compte
         );
 
+         // 2. Initier le paiement via PaiementService
+        $resultPaiement = $this->paiementService->initier([
+            'commande_id'  => $commande->id,
+            'modePaiement' => $request->input('paiement.modePaiement'),
+            'operateur'    => $request->input('paiement.operateur'),
+            'telephone'    => $request->input('paiement.telephone'),
+        ]);
+
         return response()->json([
-            'message'  => 'Commande passée avec succès.',
-            'commande' => $commande,
+            'commande'     => $commande,
+            'paiement'     => $resultPaiement['paiement'],
+            // URL de redirection Wave ou PayDunya (null si espèces)
+            'checkout_url' => $resultPaiement['checkout_url'] ?? null,
+            'message'      => $resultPaiement['message'],
         ], 201);
     }
 
     // ─── PATCH /api/commandes/{commande}/statut ───────────────────────────────
-    // Admin uniquement
     public function changerStatut(CommandeRequest $request, Commande $commande): JsonResponse
     {
         abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur.');

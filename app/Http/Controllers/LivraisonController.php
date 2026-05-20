@@ -27,7 +27,7 @@ class LivraisonController extends Controller
     // Livreur : ses livraisons assignées | Filtres: statut
     public function mesLivraisons(Request $request): JsonResponse
     {
-        abort_if(!$request->user()->isLivreur(), 403, 'Accès réservé aux livreurs.');
+        abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur.');
 
         $livraisons = $this->livraisonService->mesLivraisons(
             $request->user()->id,
@@ -72,7 +72,7 @@ class LivraisonController extends Controller
     // Livreur : prendre en charge une livraison non assignée
     public function prendreEnCharge(Request $request, Livraison $livraison): JsonResponse
     {
-        abort_if(!$request->user()->isLivreur(), 403, 'Accès réservé aux livreurs.');
+        abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur.');
 
         $livraison = $this->livraisonService->prendreEnCharge(
             $livraison,
@@ -89,7 +89,7 @@ class LivraisonController extends Controller
     // Livreur : marquer comme expédiée (il part avec la commande)
     public function marquerExpediee(LivraisonRequest $request, Livraison $livraison): JsonResponse
     {
-        abort_if(!$request->user()->isLivreur(), 403, 'Accès réservé aux livreurs.');
+        abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur');
 
         $livraison = $this->livraisonService->marquerExpediee(
             $livraison,
@@ -107,7 +107,7 @@ class LivraisonController extends Controller
     // Livreur : LIVREE ou NON_LIVREE
     public function mettreAJourStatut(LivraisonRequest $request, Livraison $livraison): JsonResponse
     {
-        abort_if(!$request->user()->isLivreur(), 403, 'Accès réservé aux livreurs.');
+        abort_if(!$request->user()->isAdmin(), 403, 'Accès réservé à l\'administrateur');
 
         $livraison = $this->livraisonService->mettreAJourStatut(
             $livraison,
