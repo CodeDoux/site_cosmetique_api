@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PaiementRequest;
 use App\Services\PaiementService;
 use App\Models\Paiement;
+use App\Models\Commande;
 use App\Services\PayDunyaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,30 +30,30 @@ class PaiementController extends Controller
      /**
      * Initier un paiement en ligne
      */
-    public function initierPaiementEnLigne(Request $request, Commande $commande)
-    {
-        $result = $this->payDunya->creerFacture([
-            'commande_id' => $commande->id,
-            'montant'     => (int) $commande->montantTotal,
-            'description' => "Commande CoBeauty #{$commande->id}",
-        ]);
+   public function initierPaiementEnLigne(Request $request, Commande $commande)
+{
+    $result = $this->payDunya->creerFacture([
+        'commande_id' => $commande->id,
+        'montant'     => (int) $commande->montantTotal,
+        'description' => "Commande CoBeauty #{$commande->id}",
+    ]);
 
-        if (($result['response_code'] ?? '') !== '00') {
-            return response()->json([
-                'message' => $result['description'] ?? 'Erreur PayDunya'
-            ], 500);
-        }
-
-        // Sauvegarder le token PayDunya dans le paiement
-        $commande->paiement()->update([
-            'reference' => $result['token'],
-        ]);
-
+    if (($result['response_code'] ?? '') !== '00') {
         return response()->json([
-            'payment_url' => $result['response_text'],
-            'token'       => $result['token'],
-        ]);
+            'message' => $result['response_text'] ?? 'Erreur PayDunya'
+        ], 500);
     }
+
+    // Sauvegarder le token
+    $commande->paiement()->update([
+        'reference' => $result['token'],
+    ]);
+
+    return response()->json([
+        'checkout_url' => $result['response_text'], // ← checkout_url au lieu de payment_url
+        'token'        => $result['token'],
+    ]);
+}
 
     /**
      * Callback PayDunya (webhook)

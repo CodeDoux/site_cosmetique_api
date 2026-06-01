@@ -25,6 +25,9 @@ Route::prefix('auth')->group(function () {
     Route::post('login',    [AuthController::class, 'login']);
 });
 
+ // ── Paiements
+    Route::post('paiements/{commande}/initier',  [PaiementController::class, 'initierPaiementEnLigne']);
+
 Route::get('produits',               [ProduitController::class,  'index']);
 Route::get('produits/{produit}',     [ProduitController::class,  'show']);
 Route::get('categories',             [CategorieController::class,'index']);
@@ -112,8 +115,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('commandes/{commande}',            [CommandeController::class, 'show']);
     Route::patch('commandes/{commande}/statut',   [CommandeController::class, 'changerStatut']);
 
-    // ── Paiements
-    Route::post('paiements/{commande}/initier',  [PaiementController::class, 'initierPaiementEnLigne']);
     // Liste tous les paiements (Admin)
     Route::get('paiements', [PaiementController::class, 'index']);
     Route::get('paiements/{token}/statut',       [PaiementController::class, 'verifierStatut']);

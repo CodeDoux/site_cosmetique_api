@@ -156,7 +156,7 @@ class PaiementService
     private function initierPayDunya(Commande $commande, array $data): array
     {
         $reference  = 'PAY-' . strtoupper(Str::random(8));
-        $isTestMode = config('services.paydunya.mode') === 'test';
+        $isTestMode = config('paydunya.mode') === 'test';
         $baseUrl    = $isTestMode
             ? 'https://app.paydunya.com/sandbox-api/v1'
             : 'https://app.paydunya.com/api/v1';
