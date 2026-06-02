@@ -17,10 +17,15 @@ class Commande extends Model
         'fraisLivraison',
         'modeLivraison',
         'client_id',
+        'codePromo',
+        'reduction',
     ];
 
     protected $casts = [
-        'dateCommande' => 'date',
+        'montantTotal'   => 'float',
+        'fraisLivraison' => 'float',
+        'reduction'      => 'float',  // ← ajouter
+        'dateCommande'   => 'date',
     ];
 
     // ─── Relations ───────────────────────────────────────────────────────────

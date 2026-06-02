@@ -64,12 +64,12 @@ class LivraisonService
         $livraison->update(['livreur_id' => $livreurId]);
 
         // Notifier le livreur
-        $this->notifService->envoyer(
-            $livreurId,
+       /* $this->notifService->envoyer(
+           // $livreurId,
             'Nouvelle livraison assignée',
             "La livraison {$livraison->reference} vous a été assignée.",
             'LIVRAISON'
-        );
+        );*/
 
         return $livraison->fresh(['commande.client', 'adresse', 'livreur']);
     }
@@ -90,12 +90,12 @@ class LivraisonService
         $livraison->update(['livreur_id' => $livreurId]);
 
         // Notifier le client
-        $this->notifService->envoyer(
-            $livraison->commande->client_id,
+       /* $this->notifService->envoyer(
+            //$livraison->commande->client_id,
             'Livraison prise en charge',
             "Un livreur a pris en charge votre commande {$livraison->commande->reference}.",
             'LIVRAISON'
-        );
+        );*/
 
         return $livraison->fresh(['commande.client', 'adresse']);
     }
@@ -114,12 +114,12 @@ class LivraisonService
         $livraison->commande->update(['statut' => 'EN_LIVRAISON']);
 
         // Notifier le client
-        $this->notifService->envoyer(
-            $livraison->commande->client_id,
+      /*  $this->notifService->envoyer(
+           // $livraison->commande->client_id,
             'Votre commande est en route ! 🚚',
             "Votre commande {$livraison->commande->reference} est en cours de livraison.",
             'LIVRAISON'
-        );
+        );*/
 
         return $livraison->fresh();
     }
@@ -143,12 +143,12 @@ class LivraisonService
                 $livraison->commande->update(['statut' => 'LIVREE']);
 
                 // Notifier le client
-                $this->notifService->envoyer(
-                    $livraison->commande->client_id,
+               /* $this->notifService->envoyer(
+                   // $livraison->commande->client_id,
                     'Commande livrée ✓',
                     "Votre commande {$livraison->commande->reference} a bien été livrée. Merci !",
                     'LIVRAISON'
-                );
+                );*/
 
             } else {
                 // NON_LIVREE : remettre en attente pour replanifier
@@ -156,14 +156,14 @@ class LivraisonService
 
                 // Notifier l'admin
                 $admins = User::where('role', 'ADMIN')->get();
-                foreach ($admins as $admin) {
+               /* foreach ($admins as $admin) {
                     $this->notifService->envoyer(
-                        $admin->id,
+                        //$admin->id,
                         'Échec de livraison',
                         "La livraison {$livraison->reference} n'a pas pu être effectuée. Raison : " . ($data['commentaire'] ?? 'Non précisée'),
                         'LIVRAISON'
                     );
-                }
+                }*/
             }
 
             return $livraison->fresh(['commande', 'adresse']);

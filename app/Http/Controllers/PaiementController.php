@@ -5,97 +5,84 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\PaiementRequest;
 use App\Services\PaiementService;
 use App\Models\Paiement;
 use App\Models\Commande;
-use App\Services\PayDunyaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class PaiementController extends Controller
 {
-    public function __construct(private PaiementService $paiementService, private PayDunyaService $payDunya) {}
+    public function __construct(private PaiementService $paiementService) {}
 
-    // ─── POST /api/paiements ──────────────────────────────────────────────────
-    // Client initie un paiement pour une commande
-    public function initier(PaiementRequest $request): JsonResponse
+
+    // ══════════════════════════════════════════════════════════
+    // INITIER UN PAIEMENT EN LIGNE (appelé depuis Angular)
+    // POST /api/paiements/{commande}/initier
+    // ══════════════════════════════════════════════════════════
+
+    public function initierPaiementEnLigne(Request $request, Commande $commande): JsonResponse
     {
-        $result = $this->paiementService->initier($request->validated());
+        $request->validate([
+            'modePaiement' => 'required|in:EN_LIGNE,EN_ESPECE',
+            'operateur'    => 'nullable|in:ORANGE_MONEY,WAVE,FREE_MONEY',
+            'telephone'    => 'nullable|string',
+        ]);
+
+        $result = $this->paiementService->initier([
+            'commande_id'  => $commande->id,
+            'modePaiement' => $request->modePaiement,
+            'operateur'    => $request->operateur,
+            'telephone'    => $request->telephone,
+        ]);
 
         return response()->json($result);
     }
 
-     /**
-     * Initier un paiement en ligne
-     */
-   public function initierPaiementEnLigne(Request $request, Commande $commande)
-{
-    $result = $this->payDunya->creerFacture([
-        'commande_id' => $commande->id,
-        'montant'     => (int) $commande->montantTotal,
-        'description' => "Commande CoBeauty #{$commande->id}",
-    ]);
 
-    if (($result['response_code'] ?? '') !== '00') {
-        return response()->json([
-            'message' => $result['response_text'] ?? 'Erreur PayDunya'
-        ], 500);
-    }
+    // ══════════════════════════════════════════════════════════
+    // WEBHOOK PAYDUNYA
+    // POST /api/paiements/webhook/paydunya (sans auth:sanctum)
+    // Appelé automatiquement par PayDunya après chaque paiement
+    // ══════════════════════════════════════════════════════════
 
-    // Sauvegarder le token
-    $commande->paiement()->update([
-        'reference' => $result['token'],
-    ]);
-
-    return response()->json([
-        'checkout_url' => $result['response_text'], // ← checkout_url au lieu de payment_url
-        'token'        => $result['token'],
-    ]);
-}
-
-    /**
-     * Callback PayDunya (webhook)
-     */
-    public function callback(Request $request)
+    public function webhookPayDunya(Request $request): JsonResponse
     {
-        $token = $request->data['invoice']['token'] ?? null;
-
-        if (!$token) {
-            return response()->json(['status' => 'error'], 400);
-        }
-
-        // Vérifier le statut auprès de PayDunya
-        $result = $this->payDunya->verifierFacture($token);
-
-        if (($result['status'] ?? '') === 'completed') {
-            $paiement = Paiement::where('reference', $token)->first();
-            if ($paiement) {
-                $paiement->update(['statutPaiement' => 'PAYEE']);
-                $paiement->commande()->update(['statut' => 'EN_PREPARATION']);
-            }
-        }
-
+        Log::info('PayDunya webhook reçu', $request->all());
+        $this->paiementService->traiterWebhookPayDunya($request->all());
         return response()->json(['status' => 'ok']);
     }
 
-    /**
-     * Vérifier manuellement depuis Angular après retour
-     */
-    public function verifierStatut(string $token)
+
+    // ══════════════════════════════════════════════════════════
+    // VÉRIFIER LE STATUT D'UN PAIEMENT (après retour PayDunya)
+    // GET /api/paiements/{reference}/statut
+    // ══════════════════════════════════════════════════════════
+
+    public function verifierStatut(string $reference): JsonResponse
     {
-        $result   = $this->payDunya->verifierFacture($token);
-        $paiement = Paiement::where('reference', $token)->first();
+        $paiement = Paiement::where('reference', $reference)
+            ->with('commande')
+            ->first();
+
+        if (!$paiement) {
+            return response()->json(['message' => 'Paiement introuvable.'], 404);
+        }
 
         return response()->json([
-            'statut'   => $result['status'] ?? 'unknown',
+            'statut'   => $paiement->statutPaiement,
             'paiement' => $paiement,
         ]);
     }
 
-       // ─── GET /api/paiements ───────────────────────────────────────────────────
-    public function index(Request $request)
+
+    // ══════════════════════════════════════════════════════════
+    // LISTE DES PAIEMENTS (admin)
+    // GET /api/paiements
+    // ══════════════════════════════════════════════════════════
+
+    public function index(Request $request): JsonResponse
     {
         $paiements = Paiement::with('commande')
             ->when($request->search, fn($q) =>
@@ -114,28 +101,44 @@ class PaiementController extends Controller
         return response()->json($paiements);
     }
 
-    // ─── GET /api/paiements/{paiement} ────────────────────────────────────────
-    public function show(Paiement $paiement)
+
+    // ══════════════════════════════════════════════════════════
+    // DÉTAIL D'UN PAIEMENT (admin)
+    // GET /api/paiements/{paiement}
+    // ══════════════════════════════════════════════════════════
+
+    public function show(Paiement $paiement): JsonResponse
     {
         return response()->json($paiement->load('commande'));
     }
 
-    // ─── POST /api/paiements ──────────────────────────────────────────────────
-    public function store(Request $request)
+
+    // ══════════════════════════════════════════════════════════
+    // CHANGER STATUT (admin)
+    // PATCH /api/paiements/{paiement}/statut
+    // ══════════════════════════════════════════════════════════
+
+    public function changerStatut(Request $request, Paiement $paiement): JsonResponse
     {
-        $result = $this->paiementService->initier($request->all());
-        return response()->json($result, 201);
+        $request->validate([
+            'statutPaiement' => 'required|in:PAYEE,NON_PAYEE,REMBOURSE',
+        ]);
+
+        $paiement->update(['statutPaiement' => $request->statutPaiement]);
+
+        return response()->json([
+            'message'  => 'Statut mis à jour.',
+            'paiement' => $paiement->fresh(),
+        ]);
     }
 
-    public function changerStatut(Request $request, Paiement $paiement)
-{
-    $request->validate(['statutPaiement' => 'required|in:PAYEE,NON_PAYEE,REMBOURSE']);
-    $paiement->update(['statutPaiement' => $request->statutPaiement]);
-    return response()->json(['message' => 'Statut mis à jour.', 'paiement' => $paiement->fresh()]);
-}
 
-    // ─── PATCH /api/paiements/{paiement}/rembourser ───────────────────────────
-    public function rembourser(Request $request, Paiement $paiement)
+    // ══════════════════════════════════════════════════════════
+    // REMBOURSER (admin)
+    // PATCH /api/paiements/{paiement}/rembourser
+    // ══════════════════════════════════════════════════════════
+
+    public function rembourser(Request $request, Paiement $paiement): JsonResponse
     {
         if ($paiement->statutPaiement !== 'PAYEE') {
             return response()->json([
@@ -145,39 +148,9 @@ class PaiementController extends Controller
 
         $paiement->update(['statutPaiement' => 'REMBOURSE']);
 
-        // Optionnel : notifier le client
-        // $this->notifService->envoyer(...);
-
         return response()->json([
             'message'  => 'Paiement remboursé avec succès.',
             'paiement' => $paiement->fresh(),
         ]);
-    }
-    // ─── POST /api/paiements/webhook/wave ─────────────────────────────────────
-    // Appelé automatiquement par Wave (pas de auth:sanctum sur cette route !)
-    public function webhookWave(Request $request): JsonResponse
-    {
-        // Vérification de la signature Wave pour sécuriser le webhook
-        $signature       = $request->header('Wave-Signature');
-        $payload         = $request->getContent();
-        $expectedSignature = hash_hmac('sha256', $payload, config('services.wave.webhook_secret'));
-
-        if (!hash_equals($expectedSignature, $signature ?? '')) {
-            Log::warning('Wave webhook - signature invalide');
-            return response()->json(['error' => 'Signature invalide.'], 401);
-        }
-
-        $this->paiementService->traiterWebhookWave($request->all());
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    // ─── POST /api/paiements/webhook/paydunya ────────────────────────────────
-    // Appelé automatiquement par PayDunya
-    public function webhookPayDunya(Request $request): JsonResponse
-    {
-        $this->paiementService->traiterWebhookPayDunya($request->all());
-
-        return response()->json(['status' => 'ok']);
     }
 }

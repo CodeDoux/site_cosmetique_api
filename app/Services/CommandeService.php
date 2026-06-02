@@ -48,15 +48,18 @@ class CommandeService
 
     // ─── Voir une commande ────────────────────────────────────────────────────
 
-    public function show(Commande $commande): Commande
+   public function show(Commande $commande): JsonResponse
     {
-        return $commande->load([
+        $commande->load([
             'client',
+            'invite',                          // ← infos client invité
             'lignesCommande.produit.images',
             'lignesCommande.gamme.produits',
             'paiement',
             'livraison.adresse',
         ]);
+
+        return response()->json($commande);
     }
 
     // ─── Passer une commande (connecté OU invité) ─────────────────────────────
@@ -124,12 +127,16 @@ class CommandeService
                     ];
                 }
             }
+            $reductionPromo    = 0;
+            $codePromoApplique = null;
 
             // ── Appliquer le code promo ────────────────────────────────────
             if (!empty($data['codePromo'])) {
                 $promo = Promotion::where('code', $data['codePromo'])->first();
                 if ($promo && $promo->estValide() && $montantTotal >= $promo->montantMinCommande) {
-                    $montantTotal -= $promo->calculerReduction($montantTotal);
+                    $reductionPromo    = $promo->calculerReduction($montantTotal);
+                    $montantTotal     -= $reductionPromo;
+                    $codePromoApplique = $data['codePromo'];
                 }
             }
 
@@ -143,10 +150,12 @@ class CommandeService
                 'reference'      => 'CMD-' . strtoupper(Str::random(8)),
                 'dateCommande'   => now(),
                 'statut'         => 'EN_ATTENTE',
-                'montantTotal'   => $montantTotal + $fraisLivraison,
+                'montantTotal'   => $montantTotal,
                 'fraisLivraison' => $fraisLivraison,
                 'modeLivraison'  => $data['modeLivraison'],
                 'client_id'      => $finalClientId,
+                'codePromo'      => $codePromoApplique, // ← ajouter
+                'reduction'      => $reductionPromo,    // ← ajouter
             ]);
 
             // ── Créer les lignes ───────────────────────────────────────────
@@ -168,11 +177,12 @@ class CommandeService
 
             // ── Notifier ───────────────────────────────────────────────────
             $this->notifService->envoyer(
-                $finalClientId,
-                'Commande confirmée ✓',
-                "Votre commande {$commande->reference} a bien été enregistrée.",
-                'COMMANDE'
-            );
+            'Nouvelle commande 🛍️',
+            "Nouvelle commande {$commande->reference} de " . 
+            ($commande->client->nomComplet ?? $commande->client->email) . 
+            " — " . number_format($commande->montantTotal, 0, ',', ' ') . ' Fr',
+            'COMMANDE'
+        );
 
             return $commande->load([
                 'lignesCommande.produit',
@@ -252,7 +262,6 @@ class CommandeService
 
         if (isset($messages[$statut])) {
             $this->notifService->envoyer(
-                $commande->client_id,
                 'Mise à jour de votre commande',
                 $messages[$statut],
                 'COMMANDE'

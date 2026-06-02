@@ -39,6 +39,21 @@ class Promotion extends Model
         ->withTimestamps();
     }
 
+    // Dans app/Models/Promotion.php
+
+public function estValide(): bool
+{
+    if (!$this->estActif) return false;
+
+    $now = now();
+
+    // Vérifier les dates si définies
+    if ($this->dateDebut && $now->lt($this->dateDebut)) return false;
+    if ($this->dateFin   && $now->gt($this->dateFin))   return false;
+
+    return true;
+}
+
     // ─── Helpers ───
 
     public function estEnCours(): bool

@@ -12,11 +12,10 @@ class NotificationController extends Controller
     public function __construct(private NotificationService $notifService) {}
 
     // ─── GET /api/notifications ───────────────────────────────────────────────
-    // Notifications du client connecté
     public function index(Request $request): JsonResponse
     {
         $notifications = Notification::where('destinataire_id', $request->user()->id)
-            ->latest('dateEnvoi')
+            ->latest('created_at')
             ->paginate(20);
 
         return response()->json($notifications);
@@ -25,7 +24,6 @@ class NotificationController extends Controller
     // ─── PATCH /api/notifications/{notification}/lire ────────────────────────
     public function marquerLu(Request $request, Notification $notification): JsonResponse
     {
-        // Vérifier que la notification appartient à l'utilisateur connecté
         abort_if($notification->destinataire_id !== $request->user()->id, 403);
 
         $this->notifService->marquerCommeLu($notification);
@@ -34,9 +32,9 @@ class NotificationController extends Controller
     }
 
     // ─── PATCH /api/notifications/lire-tout ──────────────────────────────────
-    public function marquerToutLu(Request $request): JsonResponse
+    public function marquerToutLu(): JsonResponse
     {
-        $this->notifService->marquerToutCommeLu($request->user()->id);
+        $this->notifService->marquerToutCommeLu(); // ← plus de paramètre
 
         return response()->json(['message' => 'Toutes les notifications ont été marquées comme lues.']);
     }

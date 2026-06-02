@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PromotionRequest;
 use App\Services\PromotionService;
 use Illuminate\Http\Request;
-
+use App\Models\Promotion;
 class PromotionController extends Controller
 {
     public function __construct(private PromotionService $promotionService) {}
@@ -88,6 +88,44 @@ class PromotionController extends Controller
             return response()->json(['message' => $e->getMessage()], 500);
         }
     }
+
+    // PromotionController.php
+public function verifier(Request $request)
+{
+    $request->validate([
+        'code'    => 'required|string',
+        'montant' => 'required|numeric',
+    ]);
+    $promo = Promotion::where('code', $request->code)
+        ->where('estActif', true)
+        ->first();
+
+    if (!$promo) {
+        return response()->json(['message' => 'Code promo invalide.'], 422);
+    }
+
+    // Vérifier montant minimum
+    if ($promo->montantMinCommande && $request->montant < $promo->montantMinCommande) {
+        return response()->json([
+            'message' => 'Montant minimum de ' . number_format($promo->montantMinCommande, 0, ',', ' ') . ' Fr requis.'
+        ], 422);
+    }
+
+    // Calculer la réduction
+    $reduction = $promo->type_valeur === 'POURCENTAGE'
+        ? ($request->montant * $promo->valeur / 100)
+        : $promo->valeur;
+
+    return response()->json([
+        'message'   => 'Code promo valide !',
+        'reduction' => $reduction,
+        'promo'     => [
+            'nom'    => $promo->nom,
+            'valeur' => $promo->valeur,
+            'type'   => $promo->type_valeur,
+        ],
+    ]);
+}
 
     // ─── Promotions actives ───────────────────────────────────────────────────
 

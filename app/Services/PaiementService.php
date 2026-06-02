@@ -2,9 +2,8 @@
 // ══════════════════════════════════════════════════════════════
 // app/Services/PaiementService.php
 //
-// Intégrations :
-//   • Wave      → Wave Business API (checkout sessions)
-//   • Orange Money / Free Money → PayDunya
+// Tous les paiements en ligne passent par PayDunya
+// (Orange Money, Free Money, Wave)
 // ══════════════════════════════════════════════════════════════
 namespace App\Services;
 
@@ -26,18 +25,20 @@ class PaiementService
     {
         $commande = Commande::with('client')->findOrFail($data['commande_id']);
 
-        // Vérifier que la commande n'est pas déjà payée
         if ($commande->paiement?->statutPaiement === 'PAYEE') {
             throw new \Exception('Cette commande est déjà payée.');
         }
 
         return match ($data['modePaiement']) {
             'EN_ESPECE' => $this->paiementEspece($commande, $data),
-            'EN_LIGNE'  => $this->paiementEnLigne($commande, $data),
+            'EN_LIGNE'  => $this->initierPayDunya($commande, $data),
+            default     => throw new \Exception('Mode de paiement non supporté.'),
         };
     }
 
-    // ─── Paiement en espèce ───────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────
+    // PAIEMENT EN ESPÈCES
+    // ──────────────────────────────────────────────────────────
 
     private function paiementEspece(Commande $commande, array $data): array
     {
@@ -60,98 +61,24 @@ class PaiementService
         ];
     }
 
-    // ─── Paiement en ligne ────────────────────────────────────────────────────
-
-    private function paiementEnLigne(Commande $commande, array $data): array
-    {
-        return match ($data['operateur']) {
-            'WAVE'         => $this->initierWave($commande, $data),
-            'ORANGE_MONEY' => $this->initierPayDunya($commande, $data),
-            'FREE_MONEY'   => $this->initierPayDunya($commande, $data),
-            default        => throw new \Exception('Opérateur non supporté.'),
-        };
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // WAVE BUSINESS API
-    // Doc officielle : https://wave.com/en/business/
-    //
-    // .env requis :
-    //   WAVE_API_KEY=votre_clé_wave
-    //   WAVE_WEBHOOK_SECRET=votre_secret_webhook
-    //
-    // config/services.php :
-    //   'wave' => [
-    //       'api_key'        => env('WAVE_API_KEY'),
-    //       'webhook_secret' => env('WAVE_WEBHOOK_SECRET'),
-    //   ],
-    // ══════════════════════════════════════════════════════════
-
-    private function initierWave(Commande $commande, array $data): array
-    {
-        $reference = 'PAY-' . strtoupper(Str::random(8));
-
-        // 1. Enregistrer le paiement en BDD (NON_PAYEE en attendant la confirmation)
-        $paiement = Paiement::updateOrCreate(
-            ['commande_id' => $commande->id],
-            [
-                'reference'      => $reference,
-                'montant'        => $commande->montantTotal,
-                'statutPaiement' => 'NON_PAYEE',
-                'modePaiement'   => 'EN_LIGNE',
-                'operateur'      => 'WAVE',
-                'telephone'      => $data['telephone'],
-            ]
-        );
-
-        // 2. Créer une session de paiement Wave
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.wave.api_key'),
-            'Content-Type'  => 'application/json',
-        ])->post('https://api.wave.com/v1/checkout/sessions', [
-            'currency'         => 'XOF',
-            'amount'           => (string)(int)$commande->montantTotal,
-            'error_url'        => config('app.url') . '/paiement/echec',
-            'success_url'      => config('app.url') . '/paiement/succes?ref=' . $reference,
-            'client_reference' => $reference, // notre référence pour retrouver le paiement dans le webhook
-        ]);
-
-        if ($response->failed()) {
-            Log::error('Wave - Erreur création session', [
-                'response' => $response->json(),
-                'commande' => $commande->reference,
-            ]);
-            throw new \Exception('Erreur lors de l\'initiation du paiement Wave.');
-        }
-
-        $waveData = $response->json();
-
-        return [
-            'message'      => 'Session Wave créée. Redirigez l\'utilisateur vers l\'URL de paiement.',
-            'paiement'     => $paiement,
-            'checkout_url' => $waveData['wave_launch_url'], // URL vers laquelle rediriger le client
-            'session_id'   => $waveData['id'],              // à sauvegarder pour vérification
-        ];
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // PAYDUNYA (Orange Money + Free Money)
-    // Doc officielle : https://paydunya.com/developers
+    // ──────────────────────────────────────────────────────────
+    // PAIEMENT EN LIGNE VIA PAYDUNYA
+    // Supporte : Orange Money, Free Money, Wave
     //
     // .env requis :
     //   PAYDUNYA_MASTER_KEY=votre_master_key
     //   PAYDUNYA_PRIVATE_KEY=votre_private_key
+    //   PAYDUNYA_PUBLIC_KEY=votre_public_key
     //   PAYDUNYA_TOKEN=votre_token
     //   PAYDUNYA_MODE=test  (ou live en production)
     //
-    // config/services.php :
-    //   'paydunya' => [
-    //       'master_key'  => env('PAYDUNYA_MASTER_KEY'),
-    //       'private_key' => env('PAYDUNYA_PRIVATE_KEY'),
-    //       'token'       => env('PAYDUNYA_TOKEN'),
-    //       'mode'        => env('PAYDUNYA_MODE', 'test'),
-    //   ],
-    // ══════════════════════════════════════════════════════════
+    // config/paydunya.php :
+    //   'master_key'  => env('PAYDUNYA_MASTER_KEY'),
+    //   'private_key' => env('PAYDUNYA_PRIVATE_KEY'),
+    //   'public_key'  => env('PAYDUNYA_PUBLIC_KEY'),
+    //   'token'       => env('PAYDUNYA_TOKEN'),
+    //   'mode'        => env('PAYDUNYA_MODE', 'test'),
+    // ──────────────────────────────────────────────────────────
 
     private function initierPayDunya(Commande $commande, array $data): array
     {
@@ -169,31 +96,33 @@ class PaiementService
                 'montant'        => $commande->montantTotal,
                 'statutPaiement' => 'NON_PAYEE',
                 'modePaiement'   => 'EN_LIGNE',
-                'operateur'      => $data['operateur'],
-                'telephone'      => $data['telephone'],
+                'operateur'      => $data['operateur'] ?? null,
+                'telephone'      => $data['telephone'] ?? null,
+                'datePaiement'   => now(),
             ]
         );
 
-        // 2. Créer une facture PayDunya
+        // 2. Créer la facture PayDunya
         $response = Http::withHeaders([
-            'PAYDUNYA-MASTER-KEY'  => config('services.paydunya.master_key'),
-            'PAYDUNYA-PRIVATE-KEY' => config('services.paydunya.private_key'),
-            'PAYDUNYA-TOKEN'       => config('services.paydunya.token'),
+            'PAYDUNYA-MASTER-KEY'  => config('paydunya.master_key'),  // ← config/paydunya.php
+            'PAYDUNYA-PRIVATE-KEY' => config('paydunya.private_key'),
+            'PAYDUNYA-PUBLIC-KEY'  => config('paydunya.public_key'),
+            'PAYDUNYA-TOKEN'       => config('paydunya.token'),
             'Content-Type'         => 'application/json',
         ])->post($baseUrl . '/checkout-invoice/create', [
             'invoice' => [
-                'total_amount' => (int)$commande->montantTotal,
+                'total_amount' => (int) $commande->montantTotal,
                 'description'  => 'Commande ' . $commande->reference,
             ],
             'store' => [
-                'name' => config('app.name'),
+                'name'    => config('app.name'),
+                'website' => config('app.frontend_url'),
             ],
             'actions' => [
-                'cancel_url'   => config('app.url') . '/paiement/echec',
-                'return_url'   => config('app.url') . '/paiement/succes?ref=' . $reference,
+                'cancel_url'   => config('app.frontend_url') . '/commande/annulee',
+                'return_url'   => config('app.frontend_url') . '/commande/succes?ref=' . $reference,
                 'callback_url' => config('app.url') . '/api/paiements/webhook/paydunya',
             ],
-            // Données personnalisées récupérées dans le webhook
             'custom_data' => [
                 'reference'   => $reference,
                 'commande_id' => $commande->id,
@@ -201,6 +130,11 @@ class PaiementService
         ]);
 
         $responseData = $response->json();
+
+        Log::info('PayDunya response', [
+            'response_code' => $responseData['response_code'] ?? null,
+            'response_text' => $responseData['response_text'] ?? null,
+        ]);
 
         if (($responseData['response_code'] ?? null) !== '00') {
             Log::error('PayDunya - Erreur création facture', [
@@ -213,85 +147,56 @@ class PaiementService
         return [
             'message'      => 'Facture créée. Redirigez l\'utilisateur vers l\'URL de paiement.',
             'paiement'     => $paiement,
-            'checkout_url' => $responseData['response_text'], // URL de paiement PayDunya
+            'checkout_url' => $responseData['response_text'],
             'token'        => $responseData['token'],
         ];
     }
 
     // ══════════════════════════════════════════════════════════
-    // WEBHOOKS (appelés automatiquement après paiement)
-    // Ces routes NE doivent PAS être protégées par auth:sanctum
+    // WEBHOOK PAYDUNYA
+    // PayDunya envoie une requête POST après chaque paiement
+    // Route : /api/paiements/webhook/paydunya (sans auth:sanctum)
     // ══════════════════════════════════════════════════════════
 
-    /**
-     * Webhook Wave
-     * Wave envoie une requête POST sur /api/paiements/webhook/wave
-     * après chaque tentative de paiement (réussie ou échouée)
-     */
-    public function traiterWebhookWave(array $payload): void
-    {
-        // client_reference = notre référence envoyée lors de la création de session
-        $reference = $payload['client_reference'] ?? null;
-        $statut    = $payload['payment_status']   ?? null; // 'succeeded' | 'failed'
-
-        if (!$reference) return;
-
-        $paiement = Paiement::where('reference', $reference)->first();
-        if (!$paiement) return;
-
-        if ($statut === 'succeeded') {
-            $paiement->update(['statutPaiement' => 'PAYEE']);
-            $paiement->commande->update(['statut' => 'EN_PREPARATION']);
-
-            $this->notifService->envoyer(
-                $paiement->commande->client_id,
-                'Paiement confirmé ✓',
-                'Votre paiement Wave a été confirmé. Commande en préparation !',
-                'PAIEMENT'
-            );
-
-            Log::info('Wave paiement confirmé', ['reference' => $reference]);
-        } else {
-            Log::warning('Wave paiement échoué', ['reference' => $reference, 'statut' => $statut]);
-        }
-    }
-
-    /**
-     * Webhook PayDunya (Orange Money / Free Money)
-     * PayDunya envoie une requête POST sur /api/paiements/webhook/paydunya
-     */
     public function traiterWebhookPayDunya(array $payload): void
     {
+        Log::info('PayDunya webhook reçu', $payload);
+
         $customData = $payload['custom_data']  ?? [];
         $reference  = $customData['reference'] ?? null;
         $statut     = $payload['status']       ?? null; // 'completed' | 'failed' | 'pending'
 
-        if (!$reference) return;
+        if (!$reference) {
+            Log::warning('PayDunya webhook - référence manquante');
+            return;
+        }
 
         $paiement = Paiement::where('reference', $reference)->first();
-        if (!$paiement) return;
+
+        if (!$paiement) {
+            Log::warning('PayDunya webhook - paiement introuvable', ['reference' => $reference]);
+            return;
+        }
 
         if ($statut === 'completed') {
             $paiement->update(['statutPaiement' => 'PAYEE']);
             $paiement->commande->update(['statut' => 'EN_PREPARATION']);
 
-            $this->notifService->envoyer(
-                $paiement->commande->client_id,
-                'Paiement confirmé ✓',
-                'Votre paiement ' . $paiement->operateur . ' a été confirmé !',
-                'PAIEMENT'
-            );
+            // Notifier le client si connecté
+           /* if ($paiement->commande->client_id) {
+                $this->notifService->envoyer(
+                    'Paiement confirmé ✓',
+                    'Votre paiement ' . ($paiement->operateur ?? 'en ligne') . ' a été confirmé. Commande en préparation !',
+                    'PAIEMENT'
+                );
+            }*/
+
+            Log::info('PayDunya paiement confirmé', ['reference' => $reference]);
+        } else {
+            Log::warning('PayDunya paiement non complété', [
+                'reference' => $reference,
+                'statut'    => $statut,
+            ]);
         }
-    }
-
-    // ─── Vérifier manuellement le statut d'une session Wave ──────────────────
-
-    public function verifierStatutWave(string $sessionId): array
-    {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.wave.api_key'),
-        ])->get("https://api.wave.com/v1/checkout/sessions/{$sessionId}");
-
-        return $response->json();
     }
 }
