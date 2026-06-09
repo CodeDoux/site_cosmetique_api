@@ -48,18 +48,16 @@ class CommandeService
 
     // ─── Voir une commande ────────────────────────────────────────────────────
 
-   public function show(Commande $commande): JsonResponse
+   public function show(Commande $commande): Commande
     {
-        $commande->load([
-            'client',
-            'invite',                          // ← infos client invité
+       return  $commande->load([
+            'client',                      
             'lignesCommande.produit.images',
             'lignesCommande.gamme.produits',
             'paiement',
             'livraison.adresse',
         ]);
 
-        return response()->json($commande);
     }
 
     // ─── Passer une commande (connecté OU invité) ─────────────────────────────
@@ -247,36 +245,62 @@ class CommandeService
         return null;
     }
 
-    // ─── Changer le statut (admin) ────────────────────────────────────────────
-
     public function changerStatut(Commande $commande, string $statut): Commande
-    {
-        $commande->update(['statut' => $statut]);
+{
+    $ancienStatut = $commande->statut;
+    $commande->update(['statut' => $statut]);
 
-        $messages = [
-            'EN_PREPARATION' => 'Votre commande est en cours de préparation.',
-            'EN_LIVRAISON'   => 'Votre commande est en route !',
-            'LIVREE'         => 'Votre commande a été livrée. Merci pour votre achat !',
-            'ANNULEE'        => 'Votre commande a été annulée.',
-        ];
+    // ─── Restaurer le stock si annulation ────────────────────────────────
+    if ($statut === 'ANNULEE' && $ancienStatut !== 'ANNULEE') {
+        $commande->load('lignesCommande.produit', 'lignesCommande.gamme.produits');
 
-        if (isset($messages[$statut])) {
-            $this->notifService->envoyer(
-                'Mise à jour de votre commande',
-                $messages[$statut],
-                'COMMANDE'
-            );
+        foreach ($commande->lignesCommande as $ligne) {
+
+            if ($ligne->type === 'PRODUIT' && $ligne->produit) {
+                $ligne->produit->increment('stock', $ligne->quantite);
+
+                // Remettre disponible si était en rupture
+                if ($ligne->produit->statut === 'EN_RUPTURE') {
+                    $ligne->produit->update(['statut' => 'DISPONIBLE']);
+                }
+            }
+
+            if ($ligne->type === 'GAMME' && $ligne->gamme) {
+                foreach ($ligne->gamme->produits as $produit) {
+                    $quantiteProduit = $produit->pivot->quantite ?? 1;
+                    $produit->increment('stock', $quantiteProduit * $ligne->quantite);
+
+                    if ($produit->statut === 'EN_RUPTURE') {
+                        $produit->update(['statut' => 'DISPONIBLE']);
+                    }
+                }
+            }
         }
-
-        if ($statut === 'LIVREE') {
-            $commande->livraison?->update([
-                'statutLivraison' => 'LIVREE',
-                'dateLivraison'   => now(),
-            ]);
-        }
-
-        return $commande->fresh();
+         // ─── Annuler la livraison ─────────────────────────────────────────
+    $commande->livraison?->update([
+        'statutLivraison' => 'NON_LIVREE',
+        'dateLivraison'   => now(),
+    ]);
     }
+
+    // ─── Notifications ────────────────────────────────────────────────────
+    $messages = [
+        'EN_PREPARATION' => 'Votre commande est en cours de préparation.',
+        'EN_LIVRAISON'   => 'Votre commande est en route !',
+        'LIVREE'         => 'Votre commande a été livrée. Merci pour votre achat !',
+        'ANNULEE'        => 'Votre commande a été annulée.',
+    ];
+
+    // ─── Livraison ────────────────────────────────────────────────────────
+    if ($statut === 'LIVREE') {
+        $commande->livraison?->update([
+            'statutLivraison' => 'LIVREE',
+            'dateLivraison'   => now(),
+        ]);
+    }
+
+    return $commande->fresh();
+}
 
     private function calculerFraisLivraison(string $mode): float
     {

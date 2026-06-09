@@ -199,4 +199,37 @@ class PaiementService
             ]);
         }
     }
+
+    public function annulerCommande(Commande $commande): void
+{
+    $commande->update(['statut' => 'ANNULEE']);
+
+    $commande->load('lignesCommande.produit', 'lignesCommande.gamme.produits', 'livraison');
+
+    // ─── Restaurer le stock ───────────────────────────────────────────
+    foreach ($commande->lignesCommande as $ligne) {
+        if ($ligne->type === 'PRODUIT' && $ligne->produit) {
+            $ligne->produit->increment('stock', $ligne->quantite);
+            if ($ligne->produit->statut === 'EN_RUPTURE') {
+                $ligne->produit->update(['statut' => 'DISPONIBLE']);
+            }
+        }
+
+        if ($ligne->type === 'GAMME' && $ligne->gamme) {
+            foreach ($ligne->gamme->produits as $produit) {
+                $qte = $produit->pivot->quantite ?? 1;
+                $produit->increment('stock', $qte * $ligne->quantite);
+                if ($produit->statut === 'EN_RUPTURE') {
+                    $produit->update(['statut' => 'DISPONIBLE']);
+                }
+            }
+        }
+    }
+
+    // ─── Annuler la livraison ─────────────────────────────────────────
+    $commande->livraison?->update([
+        'statutLivraison' => 'NON_LIVREE',
+        'dateLivraison'   => now(),
+    ]);
+}
 }

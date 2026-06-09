@@ -139,18 +139,25 @@ class PaiementController extends Controller
     // ══════════════════════════════════════════════════════════
 
     public function rembourser(Request $request, Paiement $paiement): JsonResponse
-    {
-        if ($paiement->statutPaiement !== 'PAYEE') {
-            return response()->json([
-                'message' => 'Seuls les paiements payés peuvent être remboursés.'
-            ], 422);
-        }
-
-        $paiement->update(['statutPaiement' => 'REMBOURSE']);
-
+{
+    if ($paiement->statutPaiement !== 'PAYEE') {
         return response()->json([
-            'message'  => 'Paiement remboursé avec succès.',
-            'paiement' => $paiement->fresh(),
-        ]);
+            'message' => 'Seuls les paiements payés peuvent être remboursés.'
+        ], 422);
     }
+
+    // ─── Rembourser le paiement ───────────────────────────────────────
+    $paiement->update(['statutPaiement' => 'REMBOURSE']);
+
+    // ─── Annuler la commande + restaurer le stock ─────────────────────
+    $commande = $paiement->commande;
+    if ($commande && $commande->statut !== 'ANNULEE') {
+        $this->paiementService->annulerCommande($commande);
+    }
+
+    return response()->json([
+        'message'  => 'Paiement remboursé et commande annulée.',
+        'paiement' => $paiement->fresh(),
+    ]);
+}
 }
