@@ -19,7 +19,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'https://toulayskin.sn',
+    'https://www.toulayskin.sn',
+    ],
 
     'allowed_origins_patterns' => [],
 
