@@ -57,10 +57,15 @@ class Produit extends Model
         return $this->hasMany(LigneCommande::class, 'produit_id');
     }
 
-    public function promotions()
-    {
-        return $this->hasMany(Promotion::class, 'produit_id');
-    }
+    public function promotions(): BelongsToMany
+        {
+            return $this->belongsToMany(
+                Promotion::class,
+                'promotion_produits', // ← table pivot
+                'produit_id',
+                'promo_id'            // ← vérifiez le nom exact de la colonne
+            );
+        }
 
     // ── Relation ajoutée pour les gammes ──────────────────────────────────────
     public function gammes()
