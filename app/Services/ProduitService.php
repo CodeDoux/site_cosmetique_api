@@ -55,7 +55,7 @@ class ProduitService
 
     public function show(Produit $produit): Produit
     {
-        return $produit->load(['categorie', 'images', 'avis.client', 'promotions']);
+        return $produit->load(['categorie', 'images', 'avis.client']);
     }
 
     // ─── Créer un produit ─────────────────────────────────────────────────────
